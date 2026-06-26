@@ -87,7 +87,7 @@ export function App() {
   const roomRows = useQuery<any[]>("room");
   const auth = useAuth();
   const addShape = useMutation<[string], void>("addShape");
-  const updateShape = useMutation<[string], void>("updateShape");
+  const updateShapeM = useMutation<[string], void>("updateShape");
   const deleteShape = useMutation<[string], void>("deleteShape");
   const undoM = useMutation<[string], void>("undo");
   const redoM = useMutation<[string], void>("redo");
@@ -114,6 +114,7 @@ export function App() {
   const [vp, setVp] = useState({ x: -200, y: -150, zoom: 1 });
   const [draft, setDraft] = useState<Shape | null>(null);
   const [pending, setPending] = useState<Shape[]>([]);
+  const [optim, setOptim] = useState<Record<string, Shape>>({});
   const [editing, setEditing] = useState<{ id: string | null; x: number; y: number; value: string } | null>(null);
   const [viewPass, setViewPass] = useState("");
   const [passInput, setPassInput] = useState("");
@@ -135,16 +136,22 @@ export function App() {
   const viewUnlocked = owner || !viewLock || (!!room?.viewHash && viewPass === room.viewHash);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2000); };
 
-  // optimistic: pending shapes render instantly; drop each once the server echoes the same data
-  const shapes = pending.length ? [...serverShapes, ...pending] : serverShapes;
+  // optimistic: new shapes (pending) AND edits (optim overrides) render instantly; each clears once the server echoes the same data
+  const hasOptim = Object.keys(optim).length > 0;
+  const baseShapes = hasOptim ? serverShapes.map((s) => optim[s.id] || s) : serverShapes;
+  const shapes = pending.length ? [...baseShapes, ...pending] : baseShapes;
   useEffect(() => {
-    if (!pending.length) return;
-    const have = new Set(serverShapes.map(sig));
-    setPending((p) => { const next = p.filter((ps) => !have.has(sig(ps))); return next.length === p.length ? p : next; });
+    setPending((p) => { if (!p.length) return p; const have = new Set(serverShapes.map(sig)); const next = p.filter((ps) => !have.has(sig(ps))); return next.length === p.length ? p : next; });
+    setOptim((o) => { const ids = Object.keys(o); if (!ids.length) return o; let changed = false; const next: Record<string, Shape> = {}; for (const id of ids) { const sv = serverShapes.find((s) => s.id === id); if (!sv || sig(sv) === sig(o[id])) { changed = true; continue; } next[id] = o[id]; } return changed ? next : o; });
   }, [serverShapes]);
   function commitAdd(shapeData: any) {
     setPending((p) => [...p, { ...shapeData, id: "pend-" + pid.current++, createdBy: "", createdAt: "" }]);
     addShape(JSON.stringify({ shape: shapeData }));
+  }
+  // optimistic edit: show the patched shape immediately, forward to the server, reconcile on echo. ALL updateShape callers get this.
+  function updateShape(payload: string) {
+    try { const { id, patch } = JSON.parse(payload); const cur = optim[id] || serverShapes.find((s) => s.id === id); if (cur) setOptim((o) => ({ ...o, [id]: { ...cur, ...patch, id } })); } catch {}
+    updateShapeM(payload);
   }
 
   useEffect(() => { const r = () => { setIsMobile(window.innerWidth < 760); setDims({ w: window.innerWidth, h: window.innerHeight }); }; window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
@@ -157,7 +164,7 @@ export function App() {
 
   function toWorld(e: { clientX: number; clientY: number }): Pt { const r = svgRef.current!.getBoundingClientRect(), v = vpRef.current; return [v.x + ((e.clientX - r.left) / r.width) * (r.width / v.zoom), v.y + ((e.clientY - r.top) / r.height) * (r.height / v.zoom)]; }
   function hit(p: Pt): Shape | null {
-    const ord = [...serverShapes].sort(byZ);
+    const ord = serverShapes.map((s) => optim[s.id] || s).sort(byZ);
     for (let i = ord.length - 1; i >= 0; i--) {
       const s = ord[i], b = bbox(s), pad = 6 + N(s.strokeWidth), rot = N(s.rotation);
       let q = p;
@@ -254,7 +261,7 @@ export function App() {
   const vbW = dims.w / vp.zoom, vbH = dims.h / vp.zoom;
   const bytes = JSON.stringify(serverShapes).length, pct = Math.min(100, (bytes / 1048576) * 100);
   const ordered = [...shapes].sort(byZ);
-  const selShape = serverShapes.find((s) => s.id === sel) || null;
+  const selShape = sel ? (optim[sel] || serverShapes.find((s) => s.id === sel) || null) : null;
   const liveSel = (sel && draft && draft.id === "draft") ? draft : selShape;
   const showProps = !isMobile && (tool !== "select" && tool !== "hand" || selShape);
 
