@@ -11,6 +11,7 @@ type Pt = [number, number];
 const N = (v: any) => { const n = Number(v); return isFinite(n) ? n : 0; };
 const FONT = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
 const PURPLE = "#6965db", SELBG = "#e3e2fc", SELFG = "#4a47c2";
+const FAVICON = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='#6965db'/><path d='M3 16.5l1.6-4.2 7.6-7.6 2.6 2.6-7.6 7.6z' transform='translate(7 5)' fill='#fff'/></svg>");
 const LIGHT_COLORS = ["#1e1e1e", "#e03131", "#2f9e44", "#1971c2", "#f08c00", "#9c36b5"];
 const DARK_COLORS = ["#e9e9ee", "#ff8787", "#69db7c", "#74c0fc", "#ffd43b", "#da77f2"];
 const FILLS = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffec99"];
@@ -155,6 +156,7 @@ export function App() {
   }
 
   useEffect(() => { const r = () => { setIsMobile(window.innerWidth < 760); setDims({ w: window.innerWidth, h: window.innerHeight }); }; window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
+  useEffect(() => { let l = document.querySelector("link[rel='icon']") as HTMLLinkElement | null; if (!l) { l = document.createElement("link"); l.rel = "icon"; document.head.appendChild(l); } l.type = "image/svg+xml"; l.href = FAVICON; }, []);
 
   function setTheme(d: boolean) {
     setDark(d); try { localStorage.setItem("wb-dark", d ? "1" : ""); } catch {}
